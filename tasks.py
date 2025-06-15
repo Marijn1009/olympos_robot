@@ -5,7 +5,6 @@ setup()
 
 import os
 
-# from datetime import datetime
 from robocorp import log
 from robocorp.tasks import task
 from robocorp.workitems import ApplicationException, BusinessException
@@ -22,11 +21,12 @@ def main() -> None:
         olympos.start_and_login()
 
     actions = [
-        {"name": "AERIALACRO", "type": "COURSE", "time": "do 18:15 - 19:30"},
-        {"name": "AERIALACRO", "type": "COURSE", "time": "za 09:45 - 11:30"},
-        {"name": "POLEFITNES", "type": "COURSE", "time": "wo 17:30 - 18:45"},
-        {"name": "POLEFITNES", "type": "COURSE", "time": "ma 19:00 - 20:15"},
-        {"name": "POLEFITNES", "type": "GROUPLESSON", "time": "ma 20:15 - 21:10"},
+        {"name": "INTENSITY", "lesson_type": "GROUPLESSON", "time": "17:30 - 18:25"},
+        {"name": "POLESPORTS", "lesson_type": "GROUPLESSON", "time": "ma 20:15 - 21:10"},
+        {"name": "AERIALACRO", "lesson_type": "COURSE", "time": "do 18:15 - 19:30"},
+        {"name": "AERIALACRO", "lesson_type": "COURSE", "time": "za 09:45 - 11:30"},
+        {"name": "POLESPORTS", "lesson_type": "COURSE", "time": "wo 17:30 - 18:45"},
+        {"name": "POLESPORTS", "lesson_type": "COURSE", "time": "ma 19:00 - 20:15"},
     ]
 
     # Verwerk acties
@@ -40,11 +40,8 @@ def process_actions(olympos: Olympos, actions: list[dict], attempt: int) -> None
         return
     error_actions = []
     for action in actions:
-        comment = ""
-
         try:
-            comment = perform_oplossing(olympos, action)
-            log.info(comment)
+            perform_oplossing(olympos, action)
         except ApplicationException as err:
             error_actions.append(action)
             log.exception("ApplicationException occurred: %s. Action: %s", err, action)
@@ -60,7 +57,7 @@ def process_actions(olympos: Olympos, actions: list[dict], attempt: int) -> None
 def perform_oplossing(olympos: Olympos, action: dict) -> str:
     try:
         name = action["name"]
-        type = action["type"]
+        lesson_type = action["lesson_type"]
         time = action["time"]
     except KeyError as e:
         raise BusinessException(code="MISSING_FIELD", message=f"Missing field: {e}") from e
@@ -70,12 +67,12 @@ def perform_oplossing(olympos: Olympos, action: dict) -> str:
     # except ValueError as e:
     #     raise BusinessException(code="DATE_FORMAT_ERROR", message=f"Date format error: {e}") from e
 
-    if type == "COURSE":
-        comment = olympos.register_into_course(name, time)
-    elif type == "GROUPLESSON":
-        comment = olympos.register_into_group_lesson(name, time)
+    if lesson_type == "COURSE":
+        olympos.register_into_course(name, time)
+    elif lesson_type == "GROUPLESSON":
+        olympos.register_into_group_lesson(name, time)
     else:
-        raise BusinessException(code="TYPE_NOT_FOUND", message=f"Type {type} kan niet verwerkt worden.")
+        raise BusinessException(code="LESSON_TYPE_NOT_FOUND", message=f"Lesson type {type} kan niet verwerkt worden.")
 
     return comment
 

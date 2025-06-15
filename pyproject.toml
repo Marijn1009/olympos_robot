@@ -1,12 +1,13 @@
 [project]
-name = "pywinauto-uv-32bit"
+name = "olympos_robot"
 version = "0.1.0"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "playwright-stealth",
     "python-dotenv>=1.1.0",
-    "pywinauto>=0.6.9",
     "requests>=2.32.3",
+    "robocorp-browser>=2.3.5",
     "robocorp-tasks>=4.0.0",
     "robocorp-workitems>=1.4.7",
     "truststore>=0.10.1",
@@ -113,3 +114,6 @@ skip-magic-trailing-comma = false
 
 # Automatically detect and use the appropriate line ending style.
 line-ending = "auto"
+
+[tool.uv.sources]
+playwright-stealth = { git = "https://github.com/Granitosaurus/playwright-stealth.git" }
