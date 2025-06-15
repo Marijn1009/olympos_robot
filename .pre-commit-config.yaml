@@ -1,0 +1,45 @@
+# Pre-commit configuration file for linting and formatting Python code.
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: fix-byte-order-marker
+      - id: check-case-conflict
+      - id: check-json
+        exclude: ".vscode/launch.json"
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: mixed-line-ending
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    # Ruff version.
+    rev: v0.11.11
+    hooks:
+      # Run the linter.
+      - id: ruff
+        args: [ --fix ]
+      # Run the formatter.
+      - id: ruff-format
+
+  - repo: https://github.com/RobertCraigie/pyright-python
+    rev: v1.1.401
+    hooks:
+      - id: pyright
+        additional_dependencies:
+            - pyright
+            - playwright
+            - robocorp-browser
+            - robocorp-tasks
+            - robocorp-workitems
+            #- robocorp-windows #no support for python 3.12 yet
+            - robocorp
+            - rpaframework
+            - types-requests
+            - pywikibot
+
+  - repo: https://github.com/kynan/nbstripout
+    rev: 0.8.1
+    hooks:
+      - id: nbstripout

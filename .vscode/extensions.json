@@ -1,0 +1,11 @@
+{
+    "recommendations": [
+        "ms-python.python",
+        "ms-python.vscode-python",
+        "tamasfe.even-better-toml",
+        "aaron-bond.better-comments",
+        "ms-python.debugpy",
+        "charliermarsh.ruff",
+        "sema4ai.sema4ai"
+    ]
+}
