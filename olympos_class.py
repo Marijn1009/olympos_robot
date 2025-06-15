@@ -56,7 +56,7 @@ class Olympos:
 
         try:
             expect(self.page.get_by_role("heading", name="Mijn producten")).to_be_visible()
-        except PlaywrightTimeoutError as e:
+        except AssertionError as e:
             if self.page.get_by_role("alert").filter(has_text="robot").is_visible():
                 raise BusinessException(code="ROBOT_DETECTED", message="Robot detected.") from e
             raise ApplicationException(code="LOGIN_FAILED", message="Login failed.") from e
@@ -101,7 +101,7 @@ class Olympos:
         except PlaywrightTimeoutError as e:
             raise BusinessException(code="LESSON_NOT_FOUND", message=f"{name} niet aanwezig in groeplessen overzicht.") from e
 
-        lesson = self.page.get_by_role("cell", name=re.compile(rf"^{re.escape(time)}.*"))
+        lesson = self.page.get_by_role("row").filter(has_text=re.compile(rf"^{re.escape(time)}.*"))
         try:
             expect(lesson).not_to_have_class(re.compile(r".*\bdisabled\b.*"), timeout=3000)  # if disabled, lesson is full
         except AssertionError as e:

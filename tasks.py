@@ -42,19 +42,20 @@ def process_actions(olympos: Olympos, actions: list[dict], attempt: int) -> None
     for action in actions:
         try:
             perform_oplossing(olympos, action)
-        except ApplicationException as err:
-            error_actions.append(action)
-            log.exception("ApplicationException occurred: %s. Action: %s", err, action)
-        except BusinessException as err:
+        except BusinessException:
             # no retry for BusinessException, so no error_actions.append(action)
-            log.exception("BusinessException occurred: %s. Action: %s", err, action)
+            pass
+        except (KeyboardInterrupt, SystemExit):
+            raise
+        except Exception:  # noqa: BLE001
+            error_actions.append(action)  # try again
 
     if len(error_actions) > 0:
         attempt += 1
         process_actions(olympos, error_actions, attempt)
 
 
-def perform_oplossing(olympos: Olympos, action: dict) -> str:
+def perform_oplossing(olympos: Olympos, action: dict) -> None:
     try:
         name = action["name"]
         lesson_type = action["lesson_type"]
@@ -73,8 +74,6 @@ def perform_oplossing(olympos: Olympos, action: dict) -> str:
         olympos.register_into_group_lesson(name, time)
     else:
         raise BusinessException(code="LESSON_TYPE_NOT_FOUND", message=f"Lesson type {type} kan niet verwerkt worden.")
-
-    return comment
 
 
 if __name__ == "__main__":
