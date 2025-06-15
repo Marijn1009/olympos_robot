@@ -11,7 +11,7 @@ from robocorp.workitems import ApplicationException, BusinessException
 
 from olympos_class import Olympos
 
-DUMMY_RUN = False  # If True, no lasting changes will be made
+DUMMY_RUN = True  # If True, no lasting changes will be made
 
 
 @task
@@ -21,12 +21,12 @@ def main() -> None:
         olympos.start_and_login()
 
     actions = [
-        {"name": "INTENSITY", "lesson_type": "GROUPLESSON", "time": "17:30 - 18:25"},
-        {"name": "POLESPORTS", "lesson_type": "GROUPLESSON", "time": "ma 20:15 - 21:10"},
-        {"name": "AERIALACRO", "lesson_type": "COURSE", "time": "do 18:15 - 19:30"},
-        {"name": "AERIALACRO", "lesson_type": "COURSE", "time": "za 09:45 - 11:30"},
-        {"name": "POLESPORTS", "lesson_type": "COURSE", "time": "wo 17:30 - 18:45"},
-        {"name": "POLESPORTS", "lesson_type": "COURSE", "time": "ma 19:00 - 20:15"},
+        {"name": "POLESPORTS", "lesson_type": "GROUPLESSON", "day": "Ma", "time": "20:15"},
+        {"name": "POLESPORTS", "lesson_type": "GROUPLESSON", "day": "Wo", "time": "18:45"},
+        # {"name": "AERIALACRO", "lesson_type": "COURSE", "time": "do 18:15 - 19:30"},
+        # {"name": "AERIALACRO", "lesson_type": "COURSE", "time": "za 09:45 - 11:30"},
+        # {"name": "POLESPORTS", "lesson_type": "COURSE", "time": "wo 17:30 - 18:45"},
+        # {"name": "POLESPORTS", "lesson_type": "COURSE", "time": "ma 19:00 - 20:15"},
     ]
 
     # Verwerk acties

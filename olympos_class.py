@@ -5,9 +5,10 @@ import time
 from time import sleep
 
 from playwright.sync_api import Locator, Page, expect
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError  # rename to avoid conflict with built-in TimeoutError
 from playwright_stealth import StealthConfig, stealth_sync  # type: ignore
 from robocorp import browser, log
-from robocorp.workitems import ApplicationException, BusinessException  # noqa: F401
+from robocorp.workitems import ApplicationException, BusinessException
 
 
 def press_sequentially_random(locator: Locator, input_text: str, min_delay: int = 40, max_delay: int = 120):
@@ -39,6 +40,7 @@ class Olympos:
         config = StealthConfig(navigator_user_agent=False)
         stealth_sync(self.page, config)
         self.page = browser.goto(url=olympos_login_url)
+        self.page.set_default_timeout(5000)
 
         # weiger cookies
         self.page.get_by_role("button", name="Weigeren").click()
@@ -51,6 +53,13 @@ class Olympos:
         sleep(0.5)
         with self.page.expect_navigation():
             self.page.get_by_role("button", name="Inloggen").click()
+
+        try:
+            expect(self.page.get_by_role("heading", name="Mijn producten")).to_be_visible()
+        except PlaywrightTimeoutError as e:
+            if self.page.get_by_role("alert").filter(has_text="robot").is_visible():
+                raise BusinessException(code="ROBOT_DETECTED", message="Robot detected.") from e
+            raise ApplicationException(code="LOGIN_FAILED", message="Login failed.") from e
 
         log.info("Browser succesfully started and logged in.")
 
@@ -87,15 +96,25 @@ class Olympos:
         self.page.get_by_role("button", name="Toevoegen").click()
 
         # filter for right row (in case of multiple pages of lessons/ avoid having to click next page)
-        self.page.get_by_role("listbox", name="Activiteit").select_option(name)
-        self.page.get_by_role("cell", name=re.compile(rf"^{re.escape(time)}.*")).click()
+        try:
+            self.page.get_by_role("listbox", name="Activiteit").select_option(name)
+        except PlaywrightTimeoutError as e:
+            raise BusinessException(code="LESSON_NOT_FOUND", message=f"{name} niet aanwezig in groeplessen overzicht.") from e
+
+        lesson = self.page.get_by_role("cell", name=re.compile(rf"^{re.escape(time)}.*"))
+        try:
+            expect(lesson).not_to_have_class(re.compile(r".*\bdisabled\b.*"), timeout=3000)  # if disabled, lesson is full
+        except AssertionError as e:
+            raise BusinessException(code="LESSON_FULL", message=f"{name} op {time} is vol.") from e
+        lesson.click()
 
         # confirm and add to cart
         if self.dummy_run:
             log.info("Dummy run: Would add to cart group lesson %s at %s.", name, time)
             return
 
-        self.page.get_by_role("button", name="Toevoegen").click()
+        with self.page.expect_navigation():
+            self.page.get_by_role("button", name="Toevoegen").click()
         log.info("Added to cart: group lesson %s at %s.", name, time)
 
         self.complete_shopping_cart()
