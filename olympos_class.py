@@ -1,14 +1,16 @@
 import os
 import random
 import re
-import time
+from pathlib import Path
 from time import sleep
+from typing import cast
 
-from playwright.sync_api import Locator, Page, expect
-from playwright.sync_api import TimeoutError as PlaywrightTimeoutError  # rename to avoid conflict with built-in TimeoutError
 from playwright_stealth import StealthConfig, stealth_sync  # type: ignore
 from robocorp import browser, log
 from robocorp.workitems import ApplicationException, BusinessException
+
+from playwright.sync_api import Locator, Page, expect
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError  # rename to avoid conflict with built-in TimeoutError
 
 
 def press_sequentially_random(locator: Locator, input_text: str, min_delay: int = 40, max_delay: int = 120):
@@ -22,27 +24,41 @@ def press_sequentially_random(locator: Locator, input_text: str, min_delay: int 
     """
     for char in input_text:
         locator.press_sequentially(char)
-        time.sleep(random.uniform(min_delay, max_delay) / 1000.0)  # Delay in seconds  # noqa: S311
+        # Add a random delay (in seconds) between key presses, using a normal distribution
+        mean_delay = (min_delay + max_delay) / 2
+        stddev_delay = (max_delay - min_delay) / 6
+        delay_ms = random.normalvariate(mean_delay, stddev_delay)
+        sleep(max(0, delay_ms / 1000.0))
 
 
 class Olympos:
+    PLAYWRIGHT_AUTH_STATE_PATH = "playwright/.auth/state.json"
+
     def __init__(self, dummy_run: bool) -> None:
         self.dummy_run: bool = dummy_run
         self.page: Page | None = None
 
-    def start_and_login(self) -> None:
-        """Go to Olympos web page and log in."""
-        olympos_login_url = "https://www.olympos.nl/inloggen"
+    def _start(self) -> None:
+        """Start the Olympos browser."""
+        if Path(self.PLAYWRIGHT_AUTH_STATE_PATH).exists():
+            self.page = browser.context(storage_state=self.PLAYWRIGHT_AUTH_STATE_PATH).new_page()
+        else:
+            self.page = browser.context().new_page()
+
+        config = StealthConfig(navigator_user_agent=False)
+        stealth_sync(self.page, config)
+
+        self.page = browser.goto(url="https://www.olympos.nl/inloggen")
+        self.page.set_default_timeout(5000)
+
+    def _login(self) -> None:
+        if self.page is None:
+            raise ApplicationException(code="PAGE_NOT_INITIALIZED", message="Page is not initialized. Please call start_and_login() first.")
+
         olympos_username = self._get_env("OLYMPOS_USERNAME")
         olympos_password = self._get_env("OLYMPOS_PASSWORD")
 
-        self.page = browser.context().new_page()
-        config = StealthConfig(navigator_user_agent=False)
-        stealth_sync(self.page, config)
-        self.page = browser.goto(url=olympos_login_url)
-        self.page.set_default_timeout(5000)
-
-        # weiger cookies
+        # weiger olympos cookies
         self.page.get_by_role("button", name="Weigeren").click()
 
         # login
@@ -60,6 +76,23 @@ class Olympos:
             if self.page.get_by_role("alert").filter(has_text="robot").is_visible():
                 raise BusinessException(code="ROBOT_DETECTED", message="Robot detected.") from e
             raise ApplicationException(code="LOGIN_FAILED", message="Login failed.") from e
+
+        # save cookies to login automatically next time
+        self.page.context.storage_state(path=self.PLAYWRIGHT_AUTH_STATE_PATH)
+
+    def start_and_login(self) -> None:
+        """Go to Olympos web page and log in."""
+        self._start()
+        self.page = cast(Page, self.page)  # tell pyright that page is not None
+
+        try:
+            # Already logged in due to cookies?
+            expect(self.page.get_by_role("heading", name="Mijn producten")).to_be_visible()
+            # if so, save current cookies again in case they have changed
+            self.page.context.storage_state(path=self.PLAYWRIGHT_AUTH_STATE_PATH)
+        except AssertionError:
+            log.info("Not logged in, trying to log in...")
+            self._login()
 
         log.info("Browser succesfully started and logged in.")
 
@@ -95,17 +128,24 @@ class Olympos:
         button.click()
         self.page.get_by_role("button", name="Toevoegen").click()
 
-        # filter for right row (in case of multiple pages of lessons/ avoid having to click next page)
+        # filter for right name of lessons (in case of multiple pages/ avoid having to click next page)
         try:
             self.page.get_by_role("listbox", name="Activiteit").select_option(name)
         except PlaywrightTimeoutError as e:
             raise BusinessException(code="LESSON_NOT_FOUND", message=f"{name} niet aanwezig in groeplessen overzicht.") from e
 
+        # select the right row/ exact lesson
         lesson = self.page.get_by_role("row").filter(has_text=re.compile(rf"^{re.escape(time)}.*"))
         try:
-            expect(lesson).not_to_have_class(re.compile(r".*\bdisabled\b.*"), timeout=3000)  # if disabled, lesson is full
+            expect(lesson).to_be_visible()
+        except AssertionError as e:
+            raise BusinessException(code="LESSON_NOT_FOUND", message=f"{name} op {time} is niet aanwezig in de lijst.") from e
+
+        try:
+            expect(lesson).not_to_have_class(re.compile(r".*\bdisabled\b.*"), timeout=500)  # if disabled, lesson is full
         except AssertionError as e:
             raise BusinessException(code="LESSON_FULL", message=f"{name} op {time} is vol.") from e
+
         lesson.click()
 
         # confirm and add to cart

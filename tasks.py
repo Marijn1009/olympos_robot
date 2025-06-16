@@ -7,7 +7,7 @@ import os
 
 from robocorp import log
 from robocorp.tasks import task
-from robocorp.workitems import ApplicationException, BusinessException
+from robocorp.workitems import ApplicationException, BusinessException  # noqa: F401
 
 from olympos_class import Olympos
 
