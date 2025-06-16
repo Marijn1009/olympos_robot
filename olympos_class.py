@@ -1,16 +1,16 @@
 import os
 import random
 import re
+from datetime import datetime
 from pathlib import Path
 from time import sleep
 from typing import cast
 
+from playwright.sync_api import Locator, Page, expect
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError  # rename to avoid conflict with built-in TimeoutError
 from playwright_stealth import StealthConfig, stealth_sync  # type: ignore
 from robocorp import browser, log
 from robocorp.workitems import ApplicationException, BusinessException
-
-from playwright.sync_api import Locator, Page, expect
-from playwright.sync_api import TimeoutError as PlaywrightTimeoutError  # rename to avoid conflict with built-in TimeoutError
 
 
 def press_sequentially_random(locator: Locator, input_text: str, min_delay: int = 40, max_delay: int = 120):
@@ -32,7 +32,7 @@ def press_sequentially_random(locator: Locator, input_text: str, min_delay: int 
 
 
 class Olympos:
-    PLAYWRIGHT_AUTH_STATE_PATH = "playwright/.auth/state.json"
+    PLAYWRIGHT_AUTH_STATE_PATH = "work_directory/state.json"
 
     def __init__(self, dummy_run: bool) -> None:
         self.dummy_run: bool = dummy_run
@@ -92,7 +92,8 @@ class Olympos:
             self.page.context.storage_state(path=self.PLAYWRIGHT_AUTH_STATE_PATH)
         except AssertionError:
             log.info("Not logged in, trying to log in...")
-            self._login()
+            with log.suppress_variables():
+                self._login()
 
         log.info("Browser succesfully started and logged in.")
 
@@ -173,4 +174,49 @@ class Olympos:
         self.page.get_by_role("button", name="Bestelling afronden").click()
         expect(self.page.get_by_role("heading", name="Bedankt voor je bestelling!")).to_be_visible()
 
-        log.info("Shopping cart completed successfully.")
+    def scrape_registered_lessons(self) -> list[dict]:
+        """Scrape the registered lessons."""
+        if self.page is None:
+            raise ApplicationException(code="PAGE_NOT_INITIALIZED", message="Page is not initialized. Please call start_and_login() first.")
+
+        if not self.page.url.startswith("https://www.olympos.nl/mijn-actieve-producten"):
+            self.page.goto("https://www.olympos.nl/mijn-actieve-producten")
+        expect(self.page.get_by_role("heading", name="Mijn producten")).to_be_visible()
+
+        # Match group lesson boxes:
+        # Anchor of group lesson boxes
+        group_lesson_header = self.page.get_by_role("strong").get_by_text("Reserveren Groepsles")
+        # Full group lesson box
+        group_lesson_locator = group_lesson_header.locator("..").locator("..").filter(has_text="Reserveringen")
+        # Actually interesting part of the box
+        group_lesson_geldigheid = group_lesson_locator.get_by_text("Geldigheid").locator("..")
+
+        group_lessons: list[dict] = []
+        for group_lesson in group_lesson_geldigheid.all():
+            group_lesson_text = group_lesson.get_by_role("definition").first.inner_text()
+            group_lessons.append(self.parse_group_lesson_text(group_lesson_text))
+
+        return group_lessons
+
+    @staticmethod
+    def parse_group_lesson_text(group_lesson_text: str) -> dict:
+        # Example input: "16 jun 2025 20:15 - 21:10 (POLESPORTS)"
+        pattern = r"(\d{1,2} \w+ \d{4}) (\d{2}:\d{2}) – (\d{2}:\d{2}) \((.+)\)"  # noqa: RUF001
+        match = re.match(pattern, group_lesson_text)
+        if not match:
+            raise ValueError(f"Could not parse group lesson text: {group_lesson_text}")
+
+        date_str, start_time, end_time, name = match.groups()
+        # Parse date and time
+        dt_start = datetime.strptime(f"{date_str} {start_time}", "%d %b %Y %H:%M")
+        # Get day as Dutch abbreviation (e.g., "Ma" for Monday)
+        day_map = {0: "Ma", 1: "Di", 2: "Wo", 3: "Do", 4: "Vr", 5: "Za", 6: "Zo"}
+        day = day_map[dt_start.weekday()]
+
+        return {
+            "name": name,
+            "lesson_type": "GROUPLESSON",
+            "day": day,
+            "time": start_time,
+            "datetime": dt_start.isoformat(),
+        }

@@ -13,6 +13,11 @@ dependencies = [
     "truststore>=0.10.1",
 ]
 
+[dependency-groups]
+dev = [
+    "debugpy>=1.8.14",
+]
+
 [tool.ruff]
 # Voorkomen permission deny errors van schrijven cache. Gewoon geen cache gebruiken:
 #cache-dir = ""
