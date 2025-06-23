@@ -59,7 +59,11 @@ class Olympos:
         olympos_password = self._get_env("OLYMPOS_PASSWORD")
 
         # weiger olympos cookies
-        self.page.get_by_role("button", name="Weigeren").click()
+        try:
+            expect(self.page.get_by_role("button", name="Weigeren")).to_be_visible(timeout=5000)
+            self.page.get_by_role("button", name="Weigeren").click()
+        except AssertionError:
+            pass
 
         # login
         sleep(0.5)

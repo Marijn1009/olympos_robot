@@ -6,7 +6,7 @@ setup()
 import argparse
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from robocorp import log
@@ -16,7 +16,7 @@ from robocorp.workitems import ApplicationException, BusinessException  # noqa: 
 from olympos_class import Olympos
 from robot_attempt_log import log_attempt
 
-DUMMY_RUN = True  # If True, no lasting changes will be made
+DUMMY_RUN = False  # If True, no lasting changes will be made
 
 REGISTRATIONS_DB = Path("work_directory/registered_lessons.json")
 LAST_SCRAPE_FILE = Path("work_directory/last_scrape.txt")
@@ -37,6 +37,10 @@ def main() -> None:
 
     if not lessons:
         raise ValueError("No lessons specified. Use --lesson to specify lessons.")
+
+    for lesson in lessons:
+        if "datetime" not in lesson:
+            lesson["datetime"] = determine_next_datetime(lesson)
 
     registered_lessons = load_registered()
     registered_lessons = delete_old_registrations(registered_lessons)
@@ -119,6 +123,28 @@ def delete_old_registrations(lessons: list[dict]) -> list[dict]:
         save_registered(filtered_lessons)
 
     return filtered_lessons
+
+
+def determine_next_datetime(lesson: dict) -> str:
+    """Determine the next datetime for a lesson based on its day and time."""
+    day_map = {"Ma": 0, "Di": 1, "Wo": 2, "Do": 3, "Vr": 4, "Za": 5, "Zo": 6}
+    day_str = lesson.get("day")
+    time_str = lesson.get("time")
+    if day_str not in day_map or not time_str:
+        raise ValueError(f"Cannot determine datetime for lesson: {lesson}")
+    target_weekday = day_map[day_str]
+    now = datetime.now()
+    # Parse time
+    hour, minute = map(int, time_str.split(":"))
+    # Find next target_weekday (including today if still upcoming)
+    days_ahead = (target_weekday - now.weekday() + 7) % 7
+    candidate_date = now.date()
+    # Today: check if time is still in the future
+    if days_ahead == 0 and (now.hour, now.minute) >= (hour, minute):
+        days_ahead = 7
+    if days_ahead != 0:
+        candidate_date = (now + timedelta(days=days_ahead)).date()
+    return datetime.combine(candidate_date, datetime.min.time()).replace(hour=hour, minute=minute).isoformat()
 
 
 def parse_args() -> list[dict]:
