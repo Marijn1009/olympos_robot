@@ -89,11 +89,11 @@ def generate_robot_attempts_html():
         return
 
     with INPUT_FILE.open(encoding="utf-8") as f:
-        for line in f:
-            stripped_line = line.strip()
-            if not stripped_line:
-                continue
-            entry = json.loads(stripped_line)
+        lines = [line.strip() for line in f if line.strip()]
+        # Reverse the lines so newest entries are first
+        lines = lines[::-1]
+        for line in lines:
+            entry = json.loads(line)
             action = entry.get("action", {})
             # Parse main timestamp
             date, time = parse_datetime(entry.get("timestamp", ""))
