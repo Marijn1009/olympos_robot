@@ -13,6 +13,7 @@ from robocorp import log
 from robocorp.tasks import task, teardown
 from robocorp.workitems import ApplicationException, BusinessException  # noqa: F401
 
+from generate_robot_attempts_html import generate_robot_attempts_html
 from log_attempt import log_attempt
 from olympos_class import Olympos
 
@@ -29,6 +30,7 @@ def write_status_file(task) -> None:
     status = "FAIL" if task.failed else "SUCCESS"
     with (output_dir / "status.txt").open("w") as f:
         f.write(status)
+    generate_robot_attempts_html()
 
 
 @task
