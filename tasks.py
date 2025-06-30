@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from robocorp import log
-from robocorp.tasks import task
+from robocorp.tasks import task, teardown
 from robocorp.workitems import ApplicationException, BusinessException  # noqa: F401
 
 from log_attempt import log_attempt
@@ -23,12 +23,21 @@ LAST_SCRAPE_FILE = Path("work_directory/last_scrape.txt")
 REGISTRATIONS_DB.parent.mkdir(parents=True, exist_ok=True)
 
 
+@teardown
+def write_status_file(task) -> None:
+    output_dir = Path.cwd() / "output"
+    status = "FAIL" if task.failed else "SUCCESS"
+    with (output_dir / "status.txt").open("w") as f:
+        f.write(status)
+
+
 @task
 def main() -> None:
     lessons = [
         # {"name": "POLESPORTS", "lesson_type": "GROUPLESSON", "day": "Ma", "time": "20:15"},
+        {"name": "POLESPORTS", "lesson_type": "GROUPLESSON", "day": "Wo", "time": "17:30"},
         {"name": "POLESPORTS", "lesson_type": "GROUPLESSON", "day": "Wo", "time": "18:45"},
-        {"name": "SPINNING", "lesson_type": "GROUPLESSON", "day": "Di", "time": "18:30"},
+        {"name": "AERIAL ACROBATIEK HG-GV", "lesson_type": "GROUPLESSON", "day": "Do", "time": "18:15"},
         # {"name": "AERIALACRO", "lesson_type": "COURSE", "time": "do 18:15 - 19:30"},
         # {"name": "AERIALACRO", "lesson_type": "COURSE", "time": "za 09:45 - 11:30"},
         # {"name": "POLESPORTS", "lesson_type": "COURSE", "time": "wo 17:30 - 18:45"},

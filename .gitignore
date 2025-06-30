@@ -5,3 +5,4 @@ work_directory/
 .coverage
 .venv
 .pytest_cache
+logs/
