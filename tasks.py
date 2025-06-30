@@ -13,8 +13,8 @@ from robocorp import log
 from robocorp.tasks import task
 from robocorp.workitems import ApplicationException, BusinessException  # noqa: F401
 
+from log_attempt import log_attempt
 from olympos_class import Olympos
-from robot_attempt_log import log_attempt
 
 DUMMY_RUN = False  # If True, no lasting changes will be made
 
@@ -26,8 +26,9 @@ REGISTRATIONS_DB.parent.mkdir(parents=True, exist_ok=True)
 @task
 def main() -> None:
     lessons = [
-        {"name": "POLESPORTS", "lesson_type": "GROUPLESSON", "day": "Ma", "time": "20:15"},
+        # {"name": "POLESPORTS", "lesson_type": "GROUPLESSON", "day": "Ma", "time": "20:15"},
         {"name": "POLESPORTS", "lesson_type": "GROUPLESSON", "day": "Wo", "time": "18:45"},
+        {"name": "SPINNING", "lesson_type": "GROUPLESSON", "day": "Di", "time": "18:30"},
         # {"name": "AERIALACRO", "lesson_type": "COURSE", "time": "do 18:15 - 19:30"},
         # {"name": "AERIALACRO", "lesson_type": "COURSE", "time": "za 09:45 - 11:30"},
         # {"name": "POLESPORTS", "lesson_type": "COURSE", "time": "wo 17:30 - 18:45"},
@@ -43,17 +44,29 @@ def main() -> None:
             lesson["datetime"] = determine_next_datetime(lesson)
 
     registered_lessons = load_registered()
-    registered_lessons = delete_old_registrations(registered_lessons)
+
+    filtered_lessons = delete_old_registrations(registered_lessons)
+    if len(filtered_lessons) != len(registered_lessons):
+        save_registered(filtered_lessons)
+        registered_lessons = filtered_lessons
 
     olympos = Olympos(dummy_run=DUMMY_RUN)
     olympos.start_and_login()
 
     if should_scrape_today():
         scraped_lessons = olympos.scrape_registered_lessons()
-        append_registered(scraped_lessons, registered_lessons)
+        updated_lessons = append_registered(scraped_lessons, registered_lessons)
+        if len(updated_lessons) != len(registered_lessons):
+            save_registered(updated_lessons)
+            registered_lessons = updated_lessons
         update_last_scrape()
 
-    lessons_to_process = [lesson for lesson in lessons if not is_registered(lesson, registered_lessons)]
+    lessons_to_process = []
+    for lesson in lessons:
+        if is_registered(lesson, registered_lessons):
+            log_attempt(lesson, "Already registered")
+        else:
+            lessons_to_process.append(lesson)
 
     if not lessons_to_process:
         log.info("All lessons already registered. Nothing to do.")
@@ -63,30 +76,34 @@ def main() -> None:
     process_lessons(olympos, lessons_to_process, attempt, registered_lessons)
 
 
-def should_scrape_today() -> bool:
+def should_scrape_today(last_scrape_file: Path = LAST_SCRAPE_FILE) -> bool:
+    """Returns true if today there was no scrape of registrations yet."""
     today_str = datetime.now().strftime("%Y-%m-%d")
-    if not LAST_SCRAPE_FILE.exists():
+    if not last_scrape_file.exists():
         return True
-    with LAST_SCRAPE_FILE.open() as f:
+    with last_scrape_file.open() as f:
         last_scrape = f.read().strip()
     return last_scrape != today_str
 
 
-def update_last_scrape() -> None:
+def update_last_scrape(last_scrape_file: Path = LAST_SCRAPE_FILE) -> None:
+    """Updates metadata file containing last date of scraped registrations."""
     today_str = datetime.now().strftime("%Y-%m-%d")
-    with LAST_SCRAPE_FILE.open("w") as f:
+    with last_scrape_file.open("w") as f:
         f.write(today_str)
 
 
-def load_registered() -> list[dict]:
-    if REGISTRATIONS_DB.exists():
-        with REGISTRATIONS_DB.open() as file:
+def load_registered(registrations_db: Path = REGISTRATIONS_DB) -> list[dict]:
+    """Loads DB file with list of lessons."""
+    if registrations_db.exists():
+        with registrations_db.open() as file:
             return json.load(file)
     return []
 
 
-def save_registered(lessons: list[dict]) -> None:
-    with REGISTRATIONS_DB.open("w") as file:
+def save_registered(lessons: list[dict], registrations_db: Path = REGISTRATIONS_DB) -> None:
+    """Overwrites DB file with list of lessons."""
+    with registrations_db.open("w") as file:
         json.dump(lessons, file, indent=2)
 
 
@@ -97,32 +114,18 @@ def is_registered(lesson: dict, registered_list: list[dict]) -> bool:
     return False
 
 
-def append_registered(lessons: list[dict], old_lessons: list[dict]) -> None:
-    updated = False
+def append_registered(lessons: list[dict], old_lessons: list[dict]) -> list[dict]:
+    """Return a new list with new lessons appended if not already registered."""
+    updated = old_lessons.copy()
     for lesson in lessons:
-        if not is_registered(lesson, old_lessons):
-            old_lessons.append(lesson)
-            updated = True
-    if updated:
-        save_registered(old_lessons)
+        if not is_registered(lesson, updated):
+            updated.append(lesson)
+    return updated
 
 
 def delete_old_registrations(lessons: list[dict]) -> list[dict]:
-    """Return only registrations that are today or in the future."""
     today = datetime.now().date()
-    filtered_lessons: list[dict] = []
-    found_old_lesson: bool = False
-    for lesson in lessons:
-        lesson_date = datetime.fromisoformat(lesson["datetime"]).date()
-        if lesson_date >= today:
-            filtered_lessons.append(lesson)
-        else:
-            found_old_lesson = True
-
-    if found_old_lesson:
-        save_registered(filtered_lessons)
-
-    return filtered_lessons
+    return [lesson for lesson in lessons if datetime.fromisoformat(lesson["datetime"]).date() >= today]
 
 
 def determine_next_datetime(lesson: dict) -> str:
@@ -151,7 +154,7 @@ def parse_args() -> list[dict]:
     parser = argparse.ArgumentParser(description="Olympos lesson registration bot")
     parser.add_argument(
         "--lesson",
-        lesson="append",  # allow multiple --lesson args
+        action="append",
         help="Lesson as 'LESSON_TYPE,NAME,DAY,TIME' (e.g. 'GROUPLESSON,POLESPORTS,Ma,20:15')",
     )
 
@@ -170,34 +173,38 @@ def parse_args() -> list[dict]:
     return lessons
 
 
-def process_lessons(olympos: Olympos, lessons: list[dict], attempt: int, registered_lessons: list[dict]) -> None:
-    if attempt > int(os.environ.get("MAX_RETRIES", "1")):
-        log.warn("The unprocessed items are: %s", ", ".join(lesson.get("course_name", str(lesson)) for lesson in lessons))
+def process_lessons(
+    olympos: Olympos, lessons: list[dict], attempt: int, registered_lessons: list[dict], save_func=save_registered, log_attempt_func=log_attempt, max_retries=None, log=log
+) -> None:
+    if max_retries is None:
+        max_retries = int(os.environ.get("MAX_RETRIES", "1"))
+    if attempt > max_retries:
+        log.warn("The unprocessed items are: %s", ", ".join(lesson.get("course_name", str(lesson)) for lesson in lessons))  # noqa: G010
         return
     error_lessons = []
     for lesson in lessons:
         try:
             perform_oplossing(olympos, lesson)
             registered_lessons.append(lesson)
-            log_attempt(lesson, "Registered")
+            log_attempt_func(lesson, "Registered")
         except BusinessException as e:
             # no retry for BusinessException, so no error_actions.append(action)
             msg = str(e)
             if "vol" in msg.lower():
-                log_attempt(lesson, "Already full")
+                log_attempt_func(lesson, "Already full")
             elif "niet aanwezig" in msg.lower():
-                log_attempt(lesson, "Not found")
+                log_attempt_func(lesson, "Not found")
             else:
-                log_attempt(lesson, f"BusinessException: {msg}")
+                log_attempt_func(lesson, f"BusinessException: {msg}")
         except (KeyboardInterrupt, SystemExit):
             raise
         except Exception as e:  # noqa: BLE001
             error_lessons.append(lesson)
-            log_attempt(lesson, f"Exception: {e}")
-    save_registered(registered_lessons)
+            log_attempt_func(lesson, f"Exception: {e}")
+    save_func(registered_lessons)
     if len(error_lessons) > 0:
         attempt += 1
-        process_lessons(olympos, error_lessons, attempt, registered_lessons)
+        process_lessons(olympos, error_lessons, attempt, registered_lessons, save_func=save_func, log_attempt_func=log_attempt_func, max_retries=max_retries, log=log)
 
 
 def perform_oplossing(olympos: Olympos, lesson: dict) -> None:
@@ -221,5 +228,5 @@ def perform_oplossing(olympos: Olympos, lesson: dict) -> None:
         raise BusinessException(code="LESSON_TYPE_NOT_FOUND", message=f"Lesson type {type} kan niet verwerkt worden.")
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     main()

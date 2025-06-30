@@ -1,0 +1,92 @@
+import json
+
+from log_attempt import log_attempt
+
+# test_log_attempt.py
+
+
+def test_log_attempt_writes_json_line(monkeypatch, tmp_path):
+    # Patch ATTEMPT_LOG to a temp file
+    test_log = tmp_path / "robot_attempts.jsonl"
+    monkeypatch.setattr("log_attempt.ATTEMPT_LOG", test_log)
+
+    # Patch datetime to a fixed value
+    class FixedDatetime:
+        @classmethod
+        def now(cls):
+            class Fixed:
+                def isoformat(self, timespec=None):
+                    return "2024-01-01T12:00:00"
+
+            return Fixed()
+
+    monkeypatch.setattr("log_attempt.datetime", FixedDatetime)
+
+    action = {"type": "move", "target": "box"}
+    result = "success"
+    log_attempt(action, result)
+
+    with test_log.open(encoding="utf-8") as f:
+        line = f.readline()
+        entry = json.loads(line)
+        assert entry["timestamp"] == "2024-01-01T12:00:00"
+        assert entry["result"] == "success"
+        assert entry["action"] == {"type": "move", "target": "box"}
+
+
+def test_log_attempt_appends_lines(monkeypatch, tmp_path):
+    test_log = tmp_path / "robot_attempts.jsonl"
+    monkeypatch.setattr("log_attempt.ATTEMPT_LOG", test_log)
+
+    class FixedDatetime:
+        counter = 0
+
+        @classmethod
+        def now(cls):
+            class Fixed:
+                def isoformat(self, timespec=None):
+                    FixedDatetime.counter += 1
+                    return f"2024-01-01T12:00:0{FixedDatetime.counter}"
+
+            return Fixed()
+
+    monkeypatch.setattr("log_attempt.datetime", FixedDatetime)
+
+    log_attempt({"a": 1}, "ok")
+    log_attempt({"b": 2}, "fail")
+
+    with test_log.open(encoding="utf-8") as f:
+        lines = f.readlines()
+        assert len(lines) == 2
+        entry1 = json.loads(lines[0])
+        entry2 = json.loads(lines[1])
+        assert entry1["action"] == {"a": 1}
+        assert entry2["action"] == {"b": 2}
+        assert entry1["timestamp"] == "2024-01-01T12:00:01"
+        assert entry2["timestamp"] == "2024-01-01T12:00:02"
+
+
+def test_log_attempt_creates_parent(monkeypatch, tmp_path):
+    log_dir = tmp_path / "logs"
+    test_log = log_dir / "robot_attempts.jsonl"
+    monkeypatch.setattr("log_attempt.ATTEMPT_LOG", test_log)
+
+    class FixedDatetime:
+        @classmethod
+        def now(cls):
+            class Fixed:
+                def isoformat(self, timespec=None):
+                    return "2024-01-01T12:00:00"
+
+            return Fixed()
+
+    monkeypatch.setattr("log_attempt.datetime", FixedDatetime)
+
+    action = {"type": "test"}
+    result = "ok"
+    log_attempt(action, result)
+
+    assert test_log.exists()
+    with test_log.open(encoding="utf-8") as f:
+        entry = json.loads(f.readline())
+        assert entry["action"] == {"type": "test"}

@@ -1,7 +1,9 @@
 # olympos_robot
+
 Create a robot to sign up for Olympos sport lessons each week.
 
-# Dev requirements
+## Dev requirements
+
 - Install [UV](https://github.com/astral-sh/uv)
 - Run 'uv sync'
 - Install 'pip install pre-commit'

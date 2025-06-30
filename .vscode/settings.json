@@ -26,4 +26,10 @@
     "python.analysis.typeCheckingMode": "standard",
     "debugpy.showPythonInlineValues": true,
     "python.terminal.activateEnvironment": false,
+    "python.testing.pytestArgs": [
+      "tests",
+      "--cov=."
+    ],
+    "testing.coverageToolbarEnabled": true,
+    "python.testing.pytestEnabled": true,
   }

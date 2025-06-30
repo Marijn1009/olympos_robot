@@ -16,6 +16,18 @@ dependencies = [
 [dependency-groups]
 dev = [
     "debugpy>=1.8.14",
+    "pytest>=8.4.1",
+    "pytest-cov>=6.2.1",
+]
+
+[tool.pytest.ini_options]
+pythonpath = [
+  "."
+]
+
+[tool.coverage.run]
+omit = [
+    "tests/*",
 ]
 
 [tool.ruff]
@@ -99,6 +111,8 @@ select = [
     'PD', # pandas
 ]
 ignore = ['TRY003', 'ERA001', 'PERF203']
+
+per-file-ignores = { "tests/*.py" = ["S101"] }
 
 # Allow auto-fixing of all enabled rules when using the `--fix` option.
 fixable = ["ALL"]
