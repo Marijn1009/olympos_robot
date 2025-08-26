@@ -37,12 +37,13 @@ def write_status_file(task) -> None:
 def main() -> None:
     lessons = [
         # {"name": "POLESPORTS", "lesson_type": "GROUPLESSON", "day": "Ma", "time": "20:15"},
-        {"name": "POLESPORTS", "lesson_type": "GROUPLESSON", "day": "Wo", "time": "17:30"},
-        {"name": "POLESPORTS", "lesson_type": "GROUPLESSON", "day": "Wo", "time": "18:45"},
-        {"name": "AERIAL ACROBATIEK HG-GV", "lesson_type": "GROUPLESSON", "day": "Do", "time": "18:15"},
+        # {"name": "POLESPORTS", "lesson_type": "GROUPLESSON", "day": "Wo", "time": "17:30"},
+        # {"name": "POLESPORTS", "lesson_type": "GROUPLESSON", "day": "Wo", "time": "18:45"},
+        # {"name": "AERIAL ACROBATIEK", "lesson_type": "GROUPLESSON", "day": "Do", "time": "18:15"},
         # {"name": "AERIALACRO", "lesson_type": "COURSE", "time": "do 18:15 - 19:30"},
         # {"name": "AERIALACRO", "lesson_type": "COURSE", "time": "za 09:45 - 11:30"},
         # {"name": "POLESPORTS", "lesson_type": "COURSE", "time": "wo 17:30 - 18:45"},
+        {"name": "CHEERLEADING", "lesson_type": "COURSE", "day": "Wo", "time": "20:00"},
         # {"name": "POLESPORTS", "lesson_type": "COURSE", "time": "ma 19:00 - 20:15"},
     ]
     # lessons = parse_args()
@@ -222,6 +223,7 @@ def perform_oplossing(olympos: Olympos, lesson: dict) -> None:
     try:
         name = lesson["name"]
         lesson_type = lesson["lesson_type"]
+        datetime = lesson["datetime"]
         time = lesson["time"]
     except KeyError as e:
         raise BusinessException(code="MISSING_FIELD", message=f"Missing field: {e}") from e
@@ -232,7 +234,7 @@ def perform_oplossing(olympos: Olympos, lesson: dict) -> None:
     #     raise BusinessException(code="DATE_FORMAT_ERROR", message=f"Date format error: {e}") from e
 
     if lesson_type == "COURSE":
-        olympos.register_into_course(name, time)
+        olympos.register_into_course(name, datetime)
     elif lesson_type == "GROUPLESSON":
         olympos.register_into_group_lesson(name, time)
     else:

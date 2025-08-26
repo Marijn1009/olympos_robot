@@ -107,8 +107,45 @@ class Olympos:
             raise ValueError(f"Please set env variable {var}")
         return value
 
-    def register_into_course(self, name: str, time: str) -> str:
+    def register_into_course(self, name: str, datetime: datetime) -> str:
         """Register into a course."""
+        if self.page is None:
+            raise ApplicationException(code="PAGE_NOT_INITIALIZED", message="Page is not initialized. Please call start_and_login() first.")
+
+        self.page.goto("https://www.olympos.nl/tickets")
+
+        description_map = {
+            "AERIAL ACROBATIEK": "Aerial acrobatiek",
+            "POLESPORTS": "Polesports",
+            "CHEERLEADING": "Cheerleading",
+        }
+
+        button = self.page.get_by_role("link", name=f"Bestel nu Cursus {description_map.get(name, name)}")
+        # extra wait until enabled. Default actionability checks or to_be_enabled() do not work here.
+        expect(button).not_to_have_class(re.compile(r".*\bdisabled\b.*"))
+        button.click()
+
+        self.page.get_by_role("combobox", name="Groep").select_option("Inschrijven nieuwe cursus...")
+
+        # Flexibly match course option using name and weekday abbreviation from datetime
+        day_map = {0: "ma", 1: "di", 2: "we", 3: "do", 4: "vr", 5: "za", 6: "zo"}
+        weekday_abbr = day_map[datetime.weekday()]
+        # Build regex pattern to match course name and weekday abbreviation
+        pattern = re.compile(rf"{re.escape(name)}.*\b{weekday_abbr}\b.*", re.IGNORECASE)
+        # Find all options in the combobox
+        combobox = self.page.get_by_role("combobox", name="Inschrijven voor")
+        options = combobox.locator("option").all()
+        matched_option = None
+        for option in options:
+            option_text = option.inner_text()
+            if pattern.search(option_text):
+                matched_option = option.get_attribute("value")
+                break
+        if matched_option:
+            combobox.select_option(matched_option)
+        else:
+            raise BusinessException(code="COURSE_NOT_FOUND", message=f"Cursus {name} op {weekday_abbr} niet gevonden.")
+
         if self.dummy_run:
             comment = f"Dummy run: Registering into course {name} at {time}."
             log.info(comment)
