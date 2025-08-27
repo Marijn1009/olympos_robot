@@ -19,9 +19,14 @@ HTML_HEADER = """<!DOCTYPE html>
         th, td { border: 1px solid #ccc; padding: 8px 12px; text-align: left; }
         th { background: #eee; }
         tr:nth-child(even) { background: #f5f5f5; }
+        td:nth-child(4) { max-width: 300px; word-wrap: break-word; font-size: 0.9em; }
         .result-Registered { background: #d4edda; color: #155724; font-weight: bold; }
         .result-Already { background: #fff3cd; color: #856404; }
         .result-Not { background: #f8d7da; color: #721c24; }
+        .result-Exception { background: #dc3545; color: #ffffff; font-weight: bold; }
+        .result-BusinessException { background: #fd7e14; color: #ffffff; font-weight: bold; }
+        .result-Timeout { background: #6f42c1; color: #ffffff; font-weight: bold; }
+        .result-TooManyFailures { background: #e83e8c; color: #ffffff; font-weight: bold; }
         .success-cell { font-size: 1.5em; text-align: center; color: #28a745; }
     </style>
 </head>
@@ -75,11 +80,26 @@ def get_result_class(result):
         return "result-Already"
     if result.startswith("Not"):
         return "result-Not"
+    if result == "Too many failed attempts today.":
+        return "result-TooManyFailures"
+    if result.startswith("BusinessException:"):
+        return "result-BusinessException"
+    if "Timeout" in result and "Exception:" in result:
+        return "result-Timeout"
+    if result.startswith("Exception:"):
+        return "result-Exception"
     return ""
 
 
 def get_success_mark(result):
     return "✔️" if result == "Registered" else ""
+
+
+def truncate_result_for_display(result, max_length=100):
+    """Truncate long result messages for better display in the table."""
+    if len(result) <= max_length:
+        return result
+    return result[:max_length] + "..."
 
 
 def generate_robot_attempts_html():
@@ -102,11 +122,14 @@ def generate_robot_attempts_html():
             result = entry.get("result", "")
             result_class = get_result_class(result)
             success_mark = get_success_mark(result)
+            truncated_result = truncate_result_for_display(result)
+            # Escape HTML characters in result for title attribute
+            result_title = result.replace('"', "&quot;").replace("<", "&lt;").replace(">", "&gt;")
             rows.append(f"""<tr>
                 <td>{entry.get("timestamp", "")}</td>
                 <td>{date}</td>
                 <td>{time}</td>
-                <td class="{result_class}">{result}</td>
+                <td class="{result_class}" title="{result_title}">{truncated_result}</td>
                 <td class="success-cell">{success_mark}</td>
                 <td>{action.get("name", "")}</td>
                 <td>{action.get("lesson_type", "")}</td>

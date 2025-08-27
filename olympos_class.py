@@ -49,7 +49,7 @@ class Olympos:
         stealth_sync(self.page, config)
 
         self.page = browser.goto(url="https://www.olympos.nl/inloggen")
-        self.page.set_default_timeout(5000)
+        self.page.set_default_timeout(60000)
 
     def _login(self) -> None:
         if self.page is None:
@@ -107,7 +107,7 @@ class Olympos:
             raise ValueError(f"Please set env variable {var}")
         return value
 
-    def register_into_course(self, name: str, datetime: datetime) -> str:
+    def register_into_course(self, name: str, lesson_datetime: datetime) -> str:
         """Register into a course."""
         if self.page is None:
             raise ApplicationException(code="PAGE_NOT_INITIALIZED", message="Page is not initialized. Please call start_and_login() first.")
@@ -126,33 +126,42 @@ class Olympos:
         button.click()
 
         self.page.get_by_role("combobox", name="Groep").select_option("Inschrijven nieuwe cursus...")
+        sleep(0.5)
 
-        # Flexibly match course option using name and weekday abbreviation from datetime
+        # Flexibly match course option using name and weekday abbreviation from lesson_datetime
         day_map = {0: "ma", 1: "di", 2: "we", 3: "do", 4: "vr", 5: "za", 6: "zo"}
-        weekday_abbr = day_map[datetime.weekday()]
-        # Build regex pattern to match course name and weekday abbreviation
-        pattern = re.compile(rf"{re.escape(name)}.*\b{weekday_abbr}\b.*", re.IGNORECASE)
+        weekday_abbr = day_map[lesson_datetime.weekday()]
+        # Build regex pattern to match course name and weekday abbreviation (do not escape spaces)
+        pattern = re.compile(rf"{name}.*\b{weekday_abbr}\b.*", re.IGNORECASE)
         # Find all options in the combobox
         combobox = self.page.get_by_role("combobox", name="Inschrijven voor")
         options = combobox.locator("option").all()
         matched_option = None
+        matched_option_disabled = False
         for option in options:
             option_text = option.inner_text()
             if pattern.search(option_text):
                 matched_option = option.get_attribute("value")
+                matched_option_disabled = option.get_attribute("disabled") is not None
                 break
+        if matched_option_disabled:
+            raise BusinessException(code="COURSE_FULL", message=f"Cursus {name} op {weekday_abbr} is vol.")
         if matched_option:
             combobox.select_option(matched_option)
         else:
             raise BusinessException(code="COURSE_NOT_FOUND", message=f"Cursus {name} op {weekday_abbr} niet gevonden.")
 
+        sleep(0.5)
+        self.page.get_by_role("button", name="Inschrijven").nth(1).click()
+
         if self.dummy_run:
-            comment = f"Dummy run: Registering into course {name} at {time}."
+            comment = f"Dummy run: Registering into course {name} on {weekday_abbr}."
             log.info(comment)
             return comment
 
-        # Simulate the registration process
-        comment = f"Registering into course {name} at {time}."
+        self.complete_shopping_cart()
+
+        comment = f"Registering into course {name} on {weekday_abbr}."
         log.info(comment)
         return comment
 
@@ -208,6 +217,9 @@ class Olympos:
             raise ApplicationException(code="PAGE_NOT_INITIALIZED", message="Page is not initialized. Please call start_and_login() first.")
 
         self.page.goto("https://www.olympos.nl/bestellen/winkelwagen")
+
+        # TODO: Check of item dubbel in winkelwagen voorkomt. Altijd 1 boeken en niet meer
+
         self.page.get_by_role("button", name="Doorgaan").click()
         # Click the label, because checkbox has overlay
         # Click on left top corner to avoid link in middle

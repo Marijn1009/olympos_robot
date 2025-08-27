@@ -35,16 +35,20 @@ def write_status_file(task) -> None:
 
 @task
 def main() -> None:
+    if failed_today_too_many_times():
+        log_attempt({"name": "TOO_MANY_FAILED_ATTEMPTS"}, "Too many failed attempts today.")
+        raise BusinessException(code="TOO_MANY_FAILED_ATTEMPTS", message="Too many failed attempts today.")
+
     lessons = [
         # {"name": "POLESPORTS", "lesson_type": "GROUPLESSON", "day": "Ma", "time": "20:15"},
         # {"name": "POLESPORTS", "lesson_type": "GROUPLESSON", "day": "Wo", "time": "17:30"},
         # {"name": "POLESPORTS", "lesson_type": "GROUPLESSON", "day": "Wo", "time": "18:45"},
         # {"name": "AERIAL ACROBATIEK", "lesson_type": "GROUPLESSON", "day": "Do", "time": "18:15"},
-        # {"name": "AERIALACRO", "lesson_type": "COURSE", "time": "do 18:15 - 19:30"},
-        # {"name": "AERIALACRO", "lesson_type": "COURSE", "time": "za 09:45 - 11:30"},
-        # {"name": "POLESPORTS", "lesson_type": "COURSE", "time": "wo 17:30 - 18:45"},
+        # {"name": "AERIAL ACROBATIEK", "lesson_type": "COURSE", "day": "Do", "time": "18:15"},
+        # {"name": "AERIAL ACROBATIEK", "lesson_type": "COURSE", "day": "Za", "time": "09:30"},
+        # {"name": "POLESPORTS", "lesson_type": "COURSE", "day": "Wo", "time": "17:30"},
         {"name": "CHEERLEADING", "lesson_type": "COURSE", "day": "Wo", "time": "20:00"},
-        # {"name": "POLESPORTS", "lesson_type": "COURSE", "time": "ma 19:00 - 20:15"},
+        # {"name": "POLESPORTS", "lesson_type": "COURSE", "day": "Ma", "time": "19:00"},
     ]
     # lessons = parse_args()
 
@@ -86,6 +90,42 @@ def main() -> None:
 
     attempt = 0
     process_lessons(olympos, lessons_to_process, attempt, registered_lessons)
+
+
+def failed_today_too_many_times() -> bool:
+    """Check if there are already 3 failures today in robot_attempts.jsonl."""
+    attempts_file = Path("work_directory/robot_attempts.jsonl")
+    if not attempts_file.exists():
+        return False
+
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    failure_count = 0
+
+    try:
+        with attempts_file.open("r", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    entry = json.loads(line.strip())
+                    timestamp = entry.get("timestamp", "")
+                    result = entry.get("result", "")
+
+                    # Check if this entry is from today and is a failure
+                    if timestamp.startswith(today_str) and (result.startswith(("Exception:", "BusinessException:")) or "Exception:" in result):
+                        failure_count += 1
+
+                        # Stop early if we already have 3 failures
+                        if failure_count >= 3:
+                            return True
+
+                except json.JSONDecodeError:
+                    # Skip malformed lines
+                    continue
+
+    except OSError:
+        # If we can't read the file, assume no failures
+        return False
+
+    return False
 
 
 def should_scrape_today(last_scrape_file: Path = LAST_SCRAPE_FILE) -> bool:
@@ -223,7 +263,7 @@ def perform_oplossing(olympos: Olympos, lesson: dict) -> None:
     try:
         name = lesson["name"]
         lesson_type = lesson["lesson_type"]
-        datetime = lesson["datetime"]
+        lesson_datetime = datetime.fromisoformat(lesson["datetime"])
         time = lesson["time"]
     except KeyError as e:
         raise BusinessException(code="MISSING_FIELD", message=f"Missing field: {e}") from e
@@ -234,7 +274,7 @@ def perform_oplossing(olympos: Olympos, lesson: dict) -> None:
     #     raise BusinessException(code="DATE_FORMAT_ERROR", message=f"Date format error: {e}") from e
 
     if lesson_type == "COURSE":
-        olympos.register_into_course(name, datetime)
+        olympos.register_into_course(name, lesson_datetime)
     elif lesson_type == "GROUPLESSON":
         olympos.register_into_group_lesson(name, time)
     else:
